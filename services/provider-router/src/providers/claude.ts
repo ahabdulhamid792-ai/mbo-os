@@ -6,7 +6,7 @@ export class ClaudeProvider implements AIProvider {
 
   name = "Claude"
 
-  enabled = true
+  enabled = false
 
   priority = 1
 

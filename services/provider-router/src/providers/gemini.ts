@@ -6,7 +6,7 @@ export class GeminiProvider implements AIProvider {
 
   name = "Gemini"
 
-  enabled = true
+  enabled = false
 
   priority = 1
 

@@ -6,7 +6,7 @@ export class OpenAIProvider implements AIProvider {
 
   name = "OpenAI"
 
-  enabled = true
+  enabled = false
 
   priority = 1
 
