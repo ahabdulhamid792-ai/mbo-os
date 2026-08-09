@@ -10,12 +10,29 @@ async function main() {
     providers.map((provider) => provider.name)
   );
 
-  const response = await router.generate(
-    "Explain what a CRM is in one short sentence."
-  );
+  // Test 1: Normal AI request
+  const response = await router.generate({
+    prompt: "Explain what a CRM is in one short sentence.",
+  });
 
   console.log("\nMBO AI RESPONSE:");
   console.log(response);
+
+  // Test 2: Vision requirement
+  try {
+    await router.generate({
+      prompt: "Analyze this image.",
+      requiresVision: true,
+    });
+
+    console.log("\nERROR: Vision request should not have succeeded.");
+  } catch (error) {
+    console.log("\nVision routing test:");
+    console.log(
+      "Correctly rejected:",
+      (error as Error).message
+    );
+  }
 }
 
 main().catch((error) => {

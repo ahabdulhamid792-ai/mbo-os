@@ -1,4 +1,5 @@
 import { AIProvider } from "../interfaces/AIProvider";
+import { AIRequest } from "../interfaces/AIRequest";
 
 import { OllamaProvider } from "../providers/ollama";
 import { OpenAIProvider } from "../providers/openai";
@@ -42,23 +43,53 @@ export class ProviderRouter {
     return available;
   }
 
-  async selectProvider(): Promise<AIProvider> {
+  async selectProvider(request?: AIRequest): Promise<AIProvider> {
     const available = await this.getAvailableProviders();
 
     if (available.length === 0) {
       throw new Error("No AI providers are available.");
     }
 
-    available.sort((a, b) => a.priority - b.priority);
+    const filtered = available.filter((provider) => {
+      if (request?.requiresVision && !provider.supportsVision) {
+        return false;
+      }
 
-    return available[0];
+      if (request?.requiresStreaming && !provider.supportsStreaming) {
+        return false;
+      }
+
+      if (request?.requiresReasoning && !provider.supportsReasoning) {
+        return false;
+      }
+
+      if (request?.minimumContext && provider.maxContext < request.minimumContext) {
+        return false;
+      }
+
+      if (request?.preferredProvider && provider.id !== request.preferredProvider) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      throw new Error(
+        "No AI providers are available that meet the requested capabilities."
+      );
+    }
+
+    filtered.sort((a, b) => a.priority - b.priority);
+
+    return filtered[0];
   }
 
-  async generate(prompt: string): Promise<string> {
-    const provider = await this.selectProvider();
+  async generate(request: AIRequest): Promise<string> {
+    const provider = await this.selectProvider(request);
 
     console.log(`Using AI provider: ${provider.name}`);
 
-    return provider.generate(prompt);
+    return provider.generate(request.prompt);
   }
 }
