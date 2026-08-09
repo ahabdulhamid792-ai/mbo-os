@@ -1,7 +1,20 @@
 export interface AIProvider {
-  name: string;
+  id: string
+  name: string
 
-  chat(prompt: string): Promise<string>;
+  enabled: boolean
 
-  healthCheck(): Promise<boolean>;
+  priority: number
+
+  supportsStreaming: boolean
+
+  supportsVision: boolean
+
+  supportsReasoning: boolean
+
+  maxContext: number
+
+  generate(prompt: string): Promise<string>
+
+  healthCheck(): Promise<boolean>
 }
