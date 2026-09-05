@@ -1,0 +1,157 @@
+import {
+  ExecutionObjectiveContext,
+} from "./ExecutionObjective"
+
+import {
+  ModelRoutingEngine,
+  ModelRoutingDecision,
+} from "../provider/ModelRoutingEngine"
+
+import {
+  RoutingAttemptEngine,
+  RoutingAttemptResult,
+} from "../provider/RoutingAttemptEngine"
+
+export interface ExecutionTask {
+  taskId: string
+
+  capability: string
+
+  objective: ExecutionObjectiveContext
+
+  input: unknown
+}
+
+export interface ExecutionResult {
+  taskId: string
+
+  success: boolean
+
+  decision: ModelRoutingDecision
+
+  attemptResult?: RoutingAttemptResult
+
+  objective: ExecutionObjectiveContext
+
+  output?: unknown
+
+  error?: string
+}
+
+export interface ExecutionHandler {
+  execute(
+    task: ExecutionTask,
+    modelId: string,
+    providerId: string
+  ): Promise<unknown>
+}
+
+export class ExecutionOrchestrator {
+  constructor(
+    private readonly routingEngine:
+      ModelRoutingEngine,
+
+    private readonly routingAttemptEngine:
+      RoutingAttemptEngine
+  ) {}
+
+  async execute(
+    task: ExecutionTask,
+    handler: ExecutionHandler
+  ): Promise<ExecutionResult> {
+    const decision =
+      this.routingEngine.route({
+        taskId: task.taskId,
+
+        capability:
+          task.capability,
+
+        requiresApproval:
+          false,
+
+        objective:
+          task.objective.objective,
+      })
+
+    if (
+      decision.decision !== "route"
+    ) {
+      return {
+        taskId: task.taskId,
+
+        success: false,
+
+        decision,
+
+        objective:
+          task.objective,
+
+        error:
+          decision.reason,
+      }
+    }
+
+    const attemptResult =
+      await this.routingAttemptEngine.execute(
+        {
+          taskId: task.taskId,
+
+          modelIds: [
+            decision.selectedModelId!,
+            ...decision.fallbackModelIds,
+          ],
+
+          providerIds: [
+            decision.selectedProviderId!,
+            ...decision.fallbackProviderIds,
+          ],
+        },
+
+        async (
+          modelId,
+          providerId
+        ) =>
+          handler.execute(
+            task,
+            modelId,
+            providerId
+          )
+      )
+
+    if (
+      !attemptResult.success
+    ) {
+      return {
+        taskId: task.taskId,
+
+        success: false,
+
+        decision,
+
+        attemptResult,
+
+        objective:
+          task.objective,
+
+        error:
+          attemptResult.error,
+      }
+    }
+
+    return {
+      taskId: task.taskId,
+
+      success: true,
+
+      decision,
+
+      attemptResult,
+
+      objective:
+        task.objective,
+
+      output:
+        attemptResult.output,
+    }
+  }
+}

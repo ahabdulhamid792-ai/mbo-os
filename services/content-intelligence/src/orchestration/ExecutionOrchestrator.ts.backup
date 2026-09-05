@@ -1,0 +1,212 @@
+import {
+  ExecutionObjectiveContext,
+} from "../execution/ExecutionObjective"
+
+import {
+  ModelRoutingEngine,
+  RoutingPlan,
+  RoutingPolicy,
+  RoutingTask,
+  RoutingTaskType,
+} from "../provider/ModelRoutingEngine"
+
+import {
+  RoutingAttemptEngine,
+  ModelExecutionRequest,
+  RoutingExecutionResult,
+  ModelExecutionResponse,
+} from "../provider/RoutingAttemptEngine"
+
+export interface ExecutionTask {
+  taskId: string
+
+  type: RoutingTaskType
+
+  capability: string
+
+  objective: ExecutionObjectiveContext
+
+  input: unknown
+}
+
+export interface ExecutionResult {
+  taskId: string
+
+  success: boolean
+
+  decision: RoutingPlan
+
+  attemptResult?: RoutingExecutionResult
+
+  objective: ExecutionObjectiveContext
+
+  output?: unknown
+
+  error?: string
+}
+
+export interface ExecutionHandler {
+  execute(
+    task: ExecutionTask,
+    modelId: string,
+    providerId: string
+  ): Promise<unknown>
+}
+
+export class ExecutionOrchestrator {
+  constructor(
+    private readonly routingEngine:
+      ModelRoutingEngine,
+
+    private readonly routingAttemptEngine:
+      RoutingAttemptEngine
+  ) {}
+
+  async execute(
+    task: ExecutionTask,
+    handler: ExecutionHandler
+  ): Promise<ExecutionResult> {
+    const routingTask: RoutingTask = {
+      id: task.taskId,
+
+      type: task.type,
+
+      capability:
+        task.capability,
+
+      description:
+        task.objective.objective,
+    }
+
+    const policy: RoutingPolicy = {
+      costPreference: "free-first",
+
+      approvalRequirement:
+        "automatic",
+
+      allowPremiumModels: true,
+
+      allowPaidModels: true,
+
+      allowFreeModels: true,
+
+      maxRetries: 1,
+
+      allowProviderFallback: true,
+
+      allowModelFallback: true,
+
+      allowManualFallback: true,
+    }
+
+    const plan =
+      this.routingEngine.route(
+        routingTask,
+        policy
+      )
+
+    if (
+      plan.decision !== "route"
+    ) {
+      return {
+        taskId: task.taskId,
+
+        success: false,
+
+        decision: plan,
+
+        objective:
+          task.objective,
+
+        error:
+          plan.reason,
+      }
+    }
+
+    const executor = {
+      execute: async (
+        request: ModelExecutionRequest
+      ): Promise<ModelExecutionResponse> => {
+        try {
+          const output =
+            await handler.execute(
+              task,
+              request.modelId,
+              request.providerId
+            )
+
+          return {
+            success: true,
+
+            result: output,
+          }
+        } catch (error) {
+          return {
+            success: false,
+
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error),
+          }
+        }
+      },
+    }
+
+    const attemptEngine =
+      new RoutingAttemptEngine(
+        executor
+      )
+
+    const attemptResult =
+      await attemptEngine.execute(
+        routingTask,
+        plan,
+        policy
+      )
+
+    if (
+      !attemptResult.success
+    ) {
+      return {
+        taskId: task.taskId,
+
+        success: false,
+
+        decision: plan,
+
+        attemptResult,
+
+        objective:
+          task.objective,
+
+        error:
+          attemptResult.error,
+      }
+    }
+
+    return {
+      taskId: task.taskId,
+
+      success: true,
+
+      decision: plan,
+
+      attemptResult,
+
+      objective:
+        task.objective,
+
+      output:
+        attemptResult.output,
+    }
+  }
+}
+/*
+ * Backward-compatible public API name.
+ *
+ * The newer execution layer uses ExecutionResult.
+ * Existing consumers may still import OrchestrationResult.
+ */
+export type OrchestrationResult =
+  ExecutionResult

@@ -1,0 +1,247 @@
+import {
+  ModelRoutingEngine,
+  ModelRoutingCatalog,
+  RoutingPolicy,
+  RoutingTask,
+} from "../provider/ModelRoutingEngine"
+
+import {
+  RoutingAttemptEngine,
+  ModelExecutor,
+  ModelExecutionRequest,
+} from "../provider/RoutingAttemptEngine"
+
+import {
+  ProviderModelConfiguration,
+} from "../provider/ProviderConfiguration"
+
+import {
+  ExecutionOrchestrator,
+  ExecutionTask,
+  ExecutionHandler,
+} from "../execution/ExecutionOrchestrator"
+
+const models: ProviderModelConfiguration[] = [
+  {
+    id: "openrouter:primary",
+    providerId: "openrouter",
+    name: "Primary Model",
+    enabled: true,
+    capabilities: [
+      "content-generation",
+      "free",
+    ],
+    role: "primary",
+    priority: 10,
+  },
+
+  {
+    id: "minimax:fallback",
+    providerId: "minimax",
+    name: "Fallback Model",
+    enabled: true,
+    capabilities: [
+      "content-generation",
+      "free",
+    ],
+    role: "fallback",
+    priority: 20,
+  },
+
+  {
+    id: "openai:backup",
+    providerId: "openai",
+    name: "Backup Model",
+    enabled: true,
+    capabilities: [
+      "content-generation",
+      "free",
+    ],
+    role: "backup",
+    priority: 30,
+  },
+]
+
+const catalog: ModelRoutingCatalog = {
+  getModels() {
+    return models
+  },
+
+  isProviderEnabled(providerId: string) {
+    return [
+      "openrouter",
+      "minimax",
+      "openai",
+    ].includes(providerId)
+  },
+}
+
+const routingEngine =
+  new ModelRoutingEngine(catalog)
+
+const policy: RoutingPolicy = {
+  costPreference: "free-first",
+
+  approvalRequirement: "automatic",
+
+  allowPremiumModels: true,
+
+  allowPaidModels: true,
+
+  allowFreeModels: true,
+
+  maxRetries: 2,
+
+  allowProviderFallback: true,
+
+  allowModelFallback: true,
+
+  allowManualFallback: true,
+}
+
+const task: RoutingTask = {
+  id: "task:orchestration-test",
+
+  type: "content-generation",
+
+  capability: "content-generation",
+}
+
+const executor: ModelExecutor = {
+  async execute(
+    request: ModelExecutionRequest
+  ) {
+    console.log(
+      `Executing attempt ${request.attempt}: ` +
+      `${request.providerId}/${request.modelId}`
+    )
+
+    if (
+      request.modelId ===
+      "openrouter:primary"
+    ) {
+      return {
+        success: false,
+        error: "Simulated primary failure.",
+      }
+    }
+
+    return {
+      success: true,
+      result: {
+        message:
+          "Execution completed successfully.",
+        modelId:
+          request.modelId,
+        providerId:
+          request.providerId,
+      },
+    }
+  },
+}
+
+const attemptEngine =
+  new RoutingAttemptEngine(executor)
+
+const orchestrator =
+  new ExecutionOrchestrator(
+    routingEngine,
+    attemptEngine
+  )
+
+const executionTask: ExecutionTask = {
+  taskId: task.id,
+
+  capability:
+    task.capability,
+
+  objective: {
+    objective:
+      "Generate content successfully using the configured routing system.",
+  },
+
+  input: {
+    prompt:
+      "Create a short content variation.",
+  },
+}
+
+const handler: ExecutionHandler = {
+  async execute(
+    task,
+    modelId,
+    providerId
+  ) {
+    console.log(
+      `Handler received: ${modelId}/${providerId}`
+    )
+
+    return {
+      taskId: task.taskId,
+
+      modelId,
+
+      providerId,
+
+      content:
+        "Generated content.",
+    }
+  },
+}
+
+async function main() {
+  console.log(
+    "MBO EXECUTION ORCHESTRATION TEST"
+  )
+
+  console.log(
+    "\n1. ROUTING PLAN"
+  )
+
+  const plan =
+    routingEngine.route(
+      task,
+      policy
+    )
+
+  console.log(plan)
+
+  console.log(
+    "\n2. EXECUTION"
+  )
+
+  const result =
+    await orchestrator.execute(
+      executionTask,
+      handler
+    )
+
+  console.log(result)
+
+  if (!result.success) {
+    throw new Error(
+      result.error ??
+      "Execution orchestration failed."
+    )
+  }
+
+  console.log(
+    "\n3. ORCHESTRATION SUCCESS"
+  )
+
+  console.log(
+    "Routing and execution completed successfully."
+  )
+}
+
+main().catch(
+  (error) => {
+    console.error(
+      "ORCHESTRATION TEST FAILED"
+    )
+
+    console.error(error)
+
+    process.exitCode = 1
+  }
+)
